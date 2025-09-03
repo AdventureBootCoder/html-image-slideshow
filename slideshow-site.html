@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Offline Slideshow</title>
+<style>
+	body {
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100vh;
+	background: #111;
+	color: white;
+	font-family: sans-serif;
+	}
+	#slideshow {
+	position: relative;
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	max-height: 90vh;
+	overflow: hidden;
+	background: black;
+	}
+	#slideshow img {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	opacity: 0;
+	transform: translateX(100%);
+	z-index: 1;
+	}
+	
+	#slideshow img.active {
+	opacity: 1;
+	transform: translateX(0);
+	z-index: 2;
+	}
+	
+	/* Slide in from right animation */
+	@keyframes slideInFromRight {
+		0% {
+			opacity: 0;
+			transform: translateX(100%);
+		}
+		100% {
+			opacity: 1;
+			transform: translateX(0);
+		}
+	}
+	
+	/* Slide in from left animation */
+	@keyframes slideInFromLeft {
+		0% {
+			opacity: 0;
+			transform: translateX(-100%);
+		}
+		100% {
+			opacity: 1;
+			transform: translateX(0);
+		}
+	}
+	
+	/* Slide out to left animation */
+	@keyframes slideOutToLeft {
+		0% {
+			opacity: 1;
+			transform: translateX(0);
+		}
+		100% {
+			opacity: 0;
+			transform: translateX(-100%);
+		}
+	}
+	
+	/* Slide out to right animation */
+	@keyframes slideOutToRight {
+		0% {
+			opacity: 1;
+			transform: translateX(0);
+		}
+		100% {
+			opacity: 0;
+			transform: translateX(100%);
+		}
+	}
+	
+	/* Apply animations */
+	#slideshow img.slide-in-right {
+	animation: slideInFromRight 0.6s ease forwards;
+	}
+	
+	#slideshow img.slide-in-left {
+	animation: slideInFromLeft 0.6s ease forwards;
+	}
+	
+	#slideshow img.slide-out-left {
+	animation: slideOutToLeft 0.6s ease forwards;
+	}
+	
+	#slideshow img.slide-out-right {
+	animation: slideOutToRight 0.6s ease forwards;
+	}
+	#controls {
+	display: flex;
+	gap: 10px;
+	margin: 10px;
+	flex-wrap: wrap;
+	justify-content: center;
+	align-items: center;
+	}
+	button {
+	padding: 8px 14px;
+	font-size: 14px;
+	border: none;
+	border-radius: 6px;
+	cursor: pointer;
+	background: #333;
+	color: white;
+	}
+	button:hover {
+	background: #555;
+	}
+	#dropzone {
+	border: 2px dashed #666;
+	padding: 20px;
+	margin: 10px;
+	text-align: center;
+	color: #aaa;
+	cursor: pointer;
+	}
+	#timeLeft {
+	font-size: 14px;
+	color: #ccc;
+	min-width: 80px;
+	text-align: center;
+	}
+</style>
+</head>
+<body>
+<h2>Offline Slideshow</h2>
+<div id="dropzone">Drag & Drop Images or Folders Here or Use the Picker</div>
+<div id="pickerControls" style="margin-bottom:10px;">
+	<button id="selectFilesBtn" style="margin-right:10px;">📁 Select Files</button>
+	<button id="selectFolderBtn">📂 Select Folder</button>
+</div>
+<input type="file" id="fileInput" accept="image/*" multiple style="display:none;">
+<input type="file" id="folderInput" webkitdirectory style="display:none;">
+
+<div id="slideshow">
+	<img id="img1">
+	<img id="img2">
+	<p id="placeholder">No images loaded yet.</p>
+</div>
+
+<div id="controls">
+	<button id="prevBtn">⏮️ Prev</button>
+	<button id="pauseBtn">⏸️ Pause</button>
+	<button id="nextBtn">⏭️ Next</button>
+	<label>
+	Interval (s):
+	<input type="number" id="intervalInput" value="60" min="1" style="width:50px;">
+	</label>
+	<button id="fullscreenBtn">⛶ Fullscreen</button>
+	<button id="shuffleBtn">🔀 Shuffle</button>
+	<button id="clearBtn">🗑️ Clear</button>
+	<span id="currentIndex">-- / --</span>
+	<span id="timeLeft">Next in: --</span>
+</div>
+
+<script>
+	const fileInput = document.getElementById('fileInput');
+	const folderInput = document.getElementById('folderInput');
+	const selectFilesBtn = document.getElementById('selectFilesBtn');
+	const selectFolderBtn = document.getElementById('selectFolderBtn');
+	const dropzone = document.getElementById('dropzone');
+	const slideshow = document.getElementById('slideshow');
+	const img1 = document.getElementById('img1');
+	const img2 = document.getElementById('img2');
+	const placeholder = document.getElementById('placeholder');
+
+	const pauseBtn = document.getElementById('pauseBtn');
+	const nextBtn = document.getElementById('nextBtn');
+	const prevBtn = document.getElementById('prevBtn');
+	const intervalInput = document.getElementById('intervalInput');
+	const fullscreenBtn = document.getElementById('fullscreenBtn');
+	const shuffleBtn = document.getElementById('shuffleBtn');
+	const clearBtn = document.getElementById('clearBtn');
+	const currentIndexDisplay = document.getElementById('currentIndex');
+	const timeLeftDisplay = document.getElementById('timeLeft');
+
+	let images = [];
+	let order = [];
+	let currentIndex = 0;
+	let interval = 60000;
+	let timer = null;
+	let countdownTimer = null;
+	let paused = false;
+	let timeLeft = interval / 1000;
+	let activeImg = img1;
+	let inactiveImg = img2;
+	let isFirstImage = true;
+	
+
+
+	function shuffleArray(array) {
+	for (let i = array.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[array[i], array[j]] = [array[j], array[i]];
+	}
+	return array;
+	}
+
+	function updateTimeLeftDisplay() {
+	timeLeftDisplay.textContent = `Next in: ${timeLeft}s`;
+	}
+
+	function updateCurrentIndexDisplay() {
+		if (order.length > 0) {
+			currentIndexDisplay.textContent = `${currentIndex + 1} / ${order.length}`;
+		} else {
+			currentIndexDisplay.textContent = "-- / --";
+		}
+	}
+
+	function showImage(index, direction = "next") {
+	if (order.length === 0) {
+		placeholder.style.display = "block";
+		img1.style.display = "none";
+		img2.style.display = "none";
+		updateCurrentIndexDisplay();
+		return;
+	}
+	placeholder.style.display = "none";
+	img1.style.display = "block";
+	img2.style.display = "block";
+	
+	currentIndex = index;
+	updateCurrentIndexDisplay();
+
+
+
+	inactiveImg.src = images[order[index]];
+	
+	// For the first image, position it in the center immediately
+	if (isFirstImage) {
+		activeImg.className = "";
+		inactiveImg.classList.add("active");
+		// Swap references for first image
+		const temp = activeImg;
+		activeImg = inactiveImg;
+		inactiveImg = temp;
+		isFirstImage = false;
+		resetCountdown();
+		return;
+	}
+	
+	// CSS Animation approach:
+	// 1. Clear all classes
+	// 2. Add slide-out animation to current active image
+	// 3. Add slide-in animation to incoming image
+	// 4. After animation completes, swap references
+	
+	// Clear all classes first
+	activeImg.className = "";
+	inactiveImg.className = "";
+	
+	// Add slide-out animation to current active image
+	if (direction === "next") {
+		activeImg.classList.add("slide-out-left");
+	} else {
+		activeImg.classList.add("slide-out-right");
+	}
+	
+	// Add slide-in animation to incoming image
+	if (direction === "next") {
+		inactiveImg.classList.add("slide-in-right");
+	} else {
+		inactiveImg.classList.add("slide-in-left");
+	}
+	
+	// Wait for animations to complete, then swap references
+	setTimeout(() => {
+		// Remove animation classes and make incoming image active
+		activeImg.className = "";
+		inactiveImg.className = "";
+		inactiveImg.classList.add("active");
+		
+		// Swap references
+		const temp = activeImg;
+		activeImg = inactiveImg;
+		inactiveImg = temp;
+		
+	}, 600); // Wait for CSS animation to complete (0.6s)
+	resetCountdown();
+	}
+
+	function startSlideshow() {
+	clearInterval(timer);
+	timer = setInterval(() => {
+		if (!paused && order.length > 0) {
+		currentIndex = (currentIndex + 1) % order.length;
+		showImage(currentIndex, "next");
+		}
+	}, interval);
+	resetCountdown();
+	}
+
+	function resetCountdown() {
+	clearInterval(countdownTimer);
+	timeLeft = interval / 1000;
+	updateTimeLeftDisplay();
+	countdownTimer = setInterval(() => {
+		if (!paused) {
+		timeLeft--;
+		if (timeLeft < 0) timeLeft = 0;
+		updateTimeLeftDisplay();
+		}
+	}, 1000);
+	}
+
+	async function handleFiles(fileList) {
+		images = [];
+		order = [];
+		
+		// Process all files and folders recursively
+		await processFileList(fileList);
+		
+		if (images.length > 0) {
+			order = images.map((_, i) => i);
+			currentIndex = 0;
+			showImage(currentIndex, "next");
+			startSlideshow();
+
+			dropzone.style.display = "none";
+			document.getElementById('pickerControls').style.display = "none";
+		}
+	}
+
+	async function processFileList(fileList) {
+		for (const file of fileList) {
+			if (file.type.startsWith("image/")) {
+				// It's an image file, add it
+				images.push(URL.createObjectURL(file));
+			} else if (file.webkitRelativePath && file.webkitRelativePath.includes('/')) {
+				// This is a file from a folder selection, skip non-images
+				continue;
+			}
+		}
+	}
+
+	async function processEntry(entry, files) {
+		return new Promise((resolve) => {
+			if (entry.isFile) {
+				// It's a file
+				entry.file(file => {
+					if (file.type.startsWith("image/")) {
+						files.push(file);
+					}
+					resolve();
+				});
+			} else if (entry.isDirectory) {
+				// It's a directory, read its contents
+				const reader = entry.createReader();
+				reader.readEntries(async (entries) => {
+					// Process all entries in this directory
+					for (const subEntry of entries) {
+						await processEntry(subEntry, files);
+					}
+					resolve();
+				});
+			} else {
+				resolve();
+			}
+		});
+	}
+
+	// File input event listeners
+	fileInput.addEventListener('change', e => handleFiles(e.target.files));
+	folderInput.addEventListener('change', e => handleFiles(e.target.files));
+	
+	// Button event listeners
+	selectFilesBtn.addEventListener('click', () => fileInput.click());
+	selectFolderBtn.addEventListener('click', () => folderInput.click());
+
+	dropzone.addEventListener('dragover', e => {
+	e.preventDefault();
+	dropzone.style.borderColor = "#fff";
+	});
+	dropzone.addEventListener('dragleave', () => {
+	dropzone.style.borderColor = "#666";
+	});
+	dropzone.addEventListener('drop', async e => {
+		e.preventDefault();
+		dropzone.style.borderColor = "#666";
+		
+		const items = e.dataTransfer.items;
+		const files = [];
+		
+		// Process all dropped items (files and folders)
+		for (let i = 0; i < items.length; i++) {
+			const item = items[i];
+			if (item.kind === 'file') {
+				const entry = item.webkitGetAsEntry();
+				if (entry) {
+					await processEntry(entry, files);
+				}
+			}
+		}
+		
+		// Convert FileList to array and process
+		const fileList = new DataTransfer();
+		files.forEach(file => fileList.items.add(file));
+		await handleFiles(fileList.files);
+	});
+
+	function togglePause() {
+	paused = !paused;
+	pauseBtn.textContent = paused ? "▶️ Resume" : "⏸️ Pause";
+	}
+
+	pauseBtn.addEventListener('click', togglePause);
+
+	function nextImage() {
+	if (order.length > 0) {
+		currentIndex = (currentIndex + 1) % order.length;
+		showImage(currentIndex, "next");
+		// Reset the automatic slideshow timer when manually navigating
+		startSlideshow();
+	}
+	}
+
+	function prevImage() {
+	if (order.length > 0) {
+		currentIndex = (currentIndex - 1 + order.length) % order.length;
+		showImage(currentIndex, "prev");
+		// Reset the automatic slideshow timer when manually navigating
+		startSlideshow();
+	}
+	}
+
+	nextBtn.addEventListener('click', nextImage);
+	prevBtn.addEventListener('click', prevImage);
+
+	intervalInput.addEventListener('change', () => {
+	interval = parseInt(intervalInput.value, 10) * 1000;
+	startSlideshow();
+	});
+
+	fullscreenBtn.addEventListener('click', () => {
+	if (!document.fullscreenElement) {
+		document.documentElement.requestFullscreen();
+	} else {
+		document.exitFullscreen();
+	}
+	});
+
+	shuffleBtn.addEventListener('click', () => {
+	if (images.length > 0) {
+		order = shuffleArray(images.map((_, i) => i));
+		currentIndex = 0;
+		showImage(currentIndex, "next");
+		startSlideshow();
+	}
+	});
+
+	clearBtn.addEventListener('click', () => {
+	clearInterval(timer);
+	clearInterval(countdownTimer);
+	images.forEach(url => URL.revokeObjectURL(url));
+
+	images = [];
+	order = [];
+	currentIndex = 0;
+	isFirstImage = true;
+	placeholder.style.display = "block";
+	placeholder.textContent = "No images loaded yet.";
+	img1.style.display = "none";
+	img2.style.display = "none";
+	timeLeftDisplay.textContent = "Next in: --";
+	updateCurrentIndexDisplay();
+
+	dropzone.style.display = "block";
+	document.getElementById('pickerControls').style.display = "block";
+	});
+
+	document.addEventListener('keydown', (e) => {
+	if (e.code === "Space") {
+		e.preventDefault();
+		togglePause();
+	}
+	if (e.code === "ArrowRight") {
+		e.preventDefault();
+		nextImage();
+	}
+	if (e.code === "ArrowLeft") {
+		e.preventDefault();
+		prevImage();
+	}
+	});
+</script>
+</body>
+</html>
