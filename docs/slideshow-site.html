@@ -200,7 +200,6 @@
 	let order = [];
 	let currentIndex = 0;
 	let interval = 60000;
-	let timer = null;
 	let countdownTimer = null;
 	let paused = false;
 	let timeLeft = interval / 1000;
@@ -302,26 +301,27 @@
 	resetCountdown();
 	}
 
-	function startSlideshow() {
-	clearInterval(timer);
-	timer = setInterval(() => {
-		if (!paused && order.length > 0) {
-		currentIndex = (currentIndex + 1) % order.length;
-		showImage(currentIndex, "next");
-		}
-	}, interval);
-	resetCountdown();
-	}
 
-	function resetCountdown() {
+
+	function resetCountdown(preserveTime = false) {
 	clearInterval(countdownTimer);
-	timeLeft = interval / 1000;
+	if (!preserveTime) {
+		timeLeft = interval / 1000;
+	}
 	updateTimeLeftDisplay();
 	countdownTimer = setInterval(() => {
 		if (!paused) {
-		timeLeft--;
-		if (timeLeft < 0) timeLeft = 0;
-		updateTimeLeftDisplay();
+			timeLeft--;
+			if (timeLeft <= 0) {
+				// Time's up! Advance to next slide
+				if (order.length > 0) {
+					currentIndex = (currentIndex + 1) % order.length;
+					showImage(currentIndex, "next");
+				}
+				// Reset countdown for next slide
+				timeLeft = interval / 1000;
+			}
+			updateTimeLeftDisplay();
 		}
 	}, 1000);
 	}
@@ -337,7 +337,7 @@
 			order = images.map((_, i) => i);
 			currentIndex = 0;
 			showImage(currentIndex, "next");
-			startSlideshow();
+			resetCountdown();
 
 			dropzone.style.display = "none";
 			document.getElementById('pickerControls').style.display = "none";
@@ -424,6 +424,11 @@
 	function togglePause() {
 	paused = !paused;
 	pauseBtn.textContent = paused ? "▶️ Resume" : "⏸️ Pause";
+	
+	if (!paused) {
+		// When resuming, restart the countdown timer with the remaining time
+		resetCountdown(true);
+	}
 	}
 
 	pauseBtn.addEventListener('click', togglePause);
@@ -433,7 +438,7 @@
 		currentIndex = (currentIndex + 1) % order.length;
 		showImage(currentIndex, "next");
 		// Reset the automatic slideshow timer when manually navigating
-		startSlideshow();
+		resetCountdown();
 	}
 	}
 
@@ -442,7 +447,7 @@
 		currentIndex = (currentIndex - 1 + order.length) % order.length;
 		showImage(currentIndex, "prev");
 		// Reset the automatic slideshow timer when manually navigating
-		startSlideshow();
+		resetCountdown();
 	}
 	}
 
@@ -451,7 +456,7 @@
 
 	intervalInput.addEventListener('change', () => {
 	interval = parseInt(intervalInput.value, 10) * 1000;
-	startSlideshow();
+	resetCountdown();
 	});
 
 	fullscreenBtn.addEventListener('click', () => {
@@ -467,12 +472,11 @@
 		order = shuffleArray(images.map((_, i) => i));
 		currentIndex = 0;
 		showImage(currentIndex, "next");
-		startSlideshow();
+		resetCountdown();
 	}
 	});
 
 	clearBtn.addEventListener('click', () => {
-	clearInterval(timer);
 	clearInterval(countdownTimer);
 	images.forEach(url => URL.revokeObjectURL(url));
 
